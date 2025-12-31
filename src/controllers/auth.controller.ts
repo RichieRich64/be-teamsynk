@@ -55,8 +55,6 @@ export const loginController = asyncHandler(
           });
         }
 
-        console.log("user", user);
-
         req.logIn(user, (err) => {
           if (err) {
             return next(err);
