@@ -25,14 +25,15 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin:
-      config.NODE_ENV === "production"
-        ? config.FRONTEND_ORIGIN
-        : [
-            config.FRONTEND_ORIGIN,
-            "http://localhost:3000",
-            "http://localhost:3001",
-          ],
+    origin: [config.FRONTEND_ORIGIN, "http://localhost:3000"],
+    // origin:
+    //   config.NODE_ENV === "production"
+    //     ? config.FRONTEND_ORIGIN
+    //     : [
+    //         config.FRONTEND_ORIGIN,
+    //         "http://localhost:3000",
+    //         "http://localhost:3001",
+    //       ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   })
