@@ -91,7 +91,6 @@ export const getWorkspaceByIdService = async (workspaceId: string) => {
 };
 
 //************* GET ALL MEMEBERS IN WORKSPACE ***************//
-
 export const getWorkspaceMembersService = async (workspaceId: string) => {
   // Fetch all members of the workspace
 

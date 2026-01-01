@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
 import UserModel from "../models/user.model";
 import AccountModel from "../models/account.model";
 import WorkspaceModel from "../models/workspace.model";
@@ -11,6 +13,51 @@ import {
 } from "../utils/appError";
 import MemberModel from "../models/member.model";
 import { ProviderEnum } from "../enums/account-provider.enum";
+import { config } from "../config/app.config";
+import RefreshTokenModel from "../models/refresh-token.model";
+
+export interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export const generateTokenPair = async (userId: string): Promise<TokenPair> => {
+  const accessToken = jwt.sign(
+    { userId, type: "access" },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: "15m" }
+  );
+
+  const refreshToken = crypto.randomBytes(40).toString("hex");
+
+  // Store refresh token in database with expiry
+  await RefreshTokenModel.create({
+    token: refreshToken,
+    userId,
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+  });
+
+  return { accessToken, refreshToken };
+};
+
+export const refreshAccessToken = async (refreshToken: string) => {
+  const storedToken = await RefreshTokenModel.findOne({
+    token: refreshToken,
+    expiresAt: { $gt: new Date() },
+  });
+
+  if (!storedToken) {
+    throw new Error("Invalid or expired refresh token");
+  }
+
+  const { accessToken, refreshToken: newRefreshToken } =
+    await generateTokenPair(storedToken.userId.toString());
+
+  // Rotate refresh token
+  await RefreshTokenModel.deleteOne({ token: refreshToken });
+
+  return { accessToken, refreshToken: newRefreshToken };
+};
 
 export const loginOrCreateAccountService = async (data: {
   provider: string;

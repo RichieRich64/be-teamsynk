@@ -3,8 +3,15 @@ import { asyncHandler } from "../middlewares/asyncHandler.middleware";
 // import { config } from "../config/app.config";
 import { registerSchema } from "../validation/auth.validation";
 import { HTTPSTATUS } from "../config/http.config";
-import { registerUserService } from "../services/auth.service";
-import passport from "passport";
+import {
+  generateTokenPair,
+  refreshAccessToken,
+  registerUserService,
+  verifyUserService,
+} from "../services/auth.service";
+import { config } from "../config/app.config";
+import RefreshTokenModel from "../models/refresh-token.model";
+import { UnauthorizedException } from "../utils/appError";
 
 // export const googleLoginCallback = asyncHandler(
 //   async (req: Request, res: Response) => {
@@ -37,81 +44,104 @@ export const registerUserController = asyncHandler(
 );
 
 export const loginController = asyncHandler(
-  async (req: Request, res: Response, next: NextFunction) => {
-    passport.authenticate(
-      "local",
-      (
-        err: Error | null,
-        user: Express.User | false,
-        info: { message: string } | undefined
-      ) => {
-        if (err) {
-          return next(err);
-        }
+  async (req: Request, res: Response) => {
+    const { email, password } = req.body;
 
-        if (!user) {
-          return res.status(HTTPSTATUS.UNAUTHORIZED).json({
-            message: info?.message || "Invalid email or password",
-          });
-        }
+    const user = await verifyUserService({ email, password });
+    const { accessToken, refreshToken } = await generateTokenPair(
+      user._id.toString()
+    );
 
-        req.logIn(user, (err) => {
-          if (err) {
-            return next(err);
-          }
+    // Set httpOnly cookies
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: config.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 15 * 60 * 1000, // 15 minutes
+    });
 
-          return res.status(HTTPSTATUS.OK).json({
-            message: "Logged in successfully",
-            user,
-          });
-        });
-      }
-    )(req, res, next);
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: config.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+
+    console.log(user);
+
+    return res.status(HTTPSTATUS.OK).json({
+      message: "Logged in successfully",
+      // user: user.omitPassword(),
+      user,
+    });
   }
 );
 
-// export const logOutController = asyncHandler(
-//   async (req: Request, res: Response) => {
-//     req.logout((err) => {
-//       if (err) {
-//         console.error("Logout error:", err);
-//         return res
-//           .status(HTTPSTATUS.INTERNAL_SERVER_ERROR)
-//           .json({ error: "Failed to log out" });
-//       }
-//     });
+export const refreshTokenController = asyncHandler(
+  async (req: Request, res: Response) => {
+    const { refreshToken } = req.cookies;
 
-//     req.session = null;
-//     return res
-//       .status(HTTPSTATUS.OK)
-//       .json({ message: "Logged out successfully" });
-//   }
-// );
+    if (!refreshToken) {
+      throw new UnauthorizedException("Refresh token required");
+    }
+
+    try {
+      const newTokens = await refreshAccessToken(refreshToken);
+
+      // Set new cookies
+      res.cookie("accessToken", newTokens.accessToken, {
+        httpOnly: true,
+        secure: config.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 15 * 60 * 1000,
+      });
+
+      res.cookie("refreshToken", newTokens.refreshToken, {
+        httpOnly: true,
+        secure: config.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      });
+
+      return res.status(HTTPSTATUS.OK).json({
+        message: "Tokens refreshed successfully",
+      });
+    } catch (error) {
+      throw new UnauthorizedException("Invalid refresh token");
+    }
+  }
+);
 
 export const logOutController = asyncHandler(
   async (req: Request, res: Response) => {
-    await new Promise<void>((resolve, reject) => {
-      req.logout((err) => {
-        if (err) {
-          console.error("Logout error:", err);
+    // Get refresh token from cookie
+    const refreshToken = req.cookies.refreshToken;
 
-          return reject(err);
-        }
+    if (refreshToken) {
+      // Remove refresh token from database (invalidate it)
+      try {
+        await RefreshTokenModel.deleteOne({ token: refreshToken });
+      } catch (error) {
+        console.error("Error removing refresh token:", error);
+        // Continue with logout even if DB operation fails
+      }
+    }
 
-        if (typeof req.session?.destroy === "function") {
-          req.session.destroy((destroyErr) => {
-            if (destroyErr) return reject(destroyErr);
-            resolve();
-          });
-          return;
-        }
-
-        resolve();
-      });
+    // Clear both cookies
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: config.NODE_ENV === "production",
+      sameSite: "lax",
     });
 
-    return res
-      .status(HTTPSTATUS.OK)
-      .json({ message: "Logged out successfully" });
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: config.NODE_ENV === "production",
+      sameSite: "lax",
+    });
+
+    return res.status(HTTPSTATUS.OK).json({
+      message: "Logged out successfully",
+    });
   }
 );
