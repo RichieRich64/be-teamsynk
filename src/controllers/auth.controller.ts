@@ -47,6 +47,10 @@ export const loginController = asyncHandler(
   async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
+    console.log("Login request from origin:", req.headers.origin);
+    console.log("NODE_ENV:", config.NODE_ENV);
+    console.log("FRONTEND_ORIGIN:", config.FRONTEND_ORIGIN);
+
     const user = await verifyUserService({ email, password });
     const { accessToken, refreshToken } = await generateTokenPair(
       user._id.toString()
@@ -56,22 +60,26 @@ export const loginController = asyncHandler(
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: config.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: config.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 15 * 60 * 1000, // 15 minutes
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: config.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: config.NODE_ENV === "production" ? "none" : "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    console.log(user);
+    console.log("Cookies set:", {
+      accessToken: !!accessToken,
+      refreshToken: !!refreshToken,
+    });
+
+    console.log("Response headers:", res.getHeaders());
 
     return res.status(HTTPSTATUS.OK).json({
       message: "Logged in successfully",
-      // user: user.omitPassword(),
       user,
     });
   }
@@ -92,14 +100,14 @@ export const refreshTokenController = asyncHandler(
       res.cookie("accessToken", newTokens.accessToken, {
         httpOnly: true,
         secure: config.NODE_ENV === "production",
-        sameSite: "lax",
+        sameSite: config.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 15 * 60 * 1000,
       });
 
       res.cookie("refreshToken", newTokens.refreshToken, {
         httpOnly: true,
         secure: config.NODE_ENV === "production",
-        sameSite: "lax",
+        sameSite: config.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 30 * 24 * 60 * 60 * 1000,
       });
 
@@ -131,13 +139,13 @@ export const logOutController = asyncHandler(
     res.clearCookie("accessToken", {
       httpOnly: true,
       secure: config.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: config.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: config.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: config.NODE_ENV === "production" ? "none" : "lax",
     });
 
     return res.status(HTTPSTATUS.OK).json({

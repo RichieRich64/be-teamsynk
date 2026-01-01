@@ -38,14 +38,14 @@ export const jwtAuth = asyncHandler(
         res.cookie("accessToken", tokens.accessToken, {
           httpOnly: true,
           secure: config.NODE_ENV === "production",
-          sameSite: "lax",
+          sameSite: config.NODE_ENV === "production" ? "none" : "lax",
           maxAge: 15 * 60 * 1000,
         });
 
         res.cookie("refreshToken", tokens.refreshToken, {
           httpOnly: true,
           secure: config.NODE_ENV === "production",
-          sameSite: "lax",
+          sameSite: config.NODE_ENV === "production" ? "none" : "lax",
           maxAge: 30 * 24 * 60 * 60 * 1000,
         });
 
